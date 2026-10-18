@@ -68,33 +68,60 @@ st.write("上传一张遥感影像，AI将自动切图并识别其中的地物�
 
 uploaded_file = st.file_uploader("请上传遥感图片", type=["jpg", "png", "jpeg"])
 
+# 新增：让用户输入时空信息
+st.subheader("时空信息（可选）")
+col1, col2 = st.columns(2)
+with col1:
+    location = st.text_input("拍摄地点", "北京")
+with col2:
+    capture_time = st.text_input("拍摄时间", "2026年7月")
+
 if uploaded_file is not None:
     st.image(uploaded_file, caption="上传的遥感图", use_container_width=True)
 
     if st.button("开始识别"):
-        with st.spinner("正在切片并调用大模型识别中，请稍候..."):
-            # 1. 读取上传的图片
+        with st.spinner("正在切片并识别中..."):
+            # 1. 读取原图
             img_bytes = uploaded_file.getvalue()
             img = Image.open(io.BytesIO(img_bytes))
 
-            # 2. 切图（把大图切成512x512的小块）
-            tiles = split_image(img, tile_size=512)
-
+            tile_size = 512
             results = []
-            # 3. 循环遍历每个切片，发给大模型
-            for i, tile in enumerate(tiles):
-                # 把切片转成字节流
-                tile_bytes = io.BytesIO()
-                tile.save(tile_bytes, format='JPEG')
+            tile_index = 1  # 记录切片编号
 
-                # 构造提示词（后面加时空特征时可以在这里改）
-                prompt_text = "你是一位遥感解译专家。请识别这张遥感切片中的主要地物，用一句话简洁描述。"
+            # 2. 核心：在切图时，记录切片的“空间坐标”
+            for i in range(0, img.width, tile_size):
+                for j in range(0, img.height, tile_size):
+                    # 确定切片的边界框 (左, 上, 右, 下)
+                    box = (i, j, min(i + tile_size, img.width), min(j + tile_size, img.height))
+                    tile = img.crop(box)
 
-                # 调用模型
-                result_text = call_qwen_vl(tile_bytes.getvalue(), prompt_text)
-                results.append(f"**切片 {i + 1}:** {result_text}")
+                    # 3. 把切片转成字节流
+                    tile_bytes = io.BytesIO()
+                    tile.save(tile_bytes, format='JPEG')
 
-            # 4. 在网页上展示所有切片的结果
-            st.success(f"✅ 识别完成！共切分并识别了 {len(tiles)} 个切片。")
+                    # 4. 构造带有“时空特征”的元数据
+                    # 空间位置：X: i, Y: j；时间：capture_time
+                    spatial_info = f"空间坐标起点(X:{i}, Y:{j})"
+                    time_info = f"拍摄时间({capture_time})"
+                    loc_info = f"拍摄地点({location})"
+
+                    # 5. 组装提示词，让大模型结合时空信息
+                    prompt_text = (
+                        f"你是一位资深遥感解译专家。"
+                        f"当前分析的是遥感影像的切片 {tile_index}，"
+                        f"该切片{spatial_info}，{loc_info}，{time_info}。"
+                        f"请结合该季节和空间位置特征，识别此切片中的主要地物，用一句话简洁描述。"
+                    )
+
+                    # 6. 调用大模型
+                    result_text = call_qwen_vl(tile_bytes.getvalue(), prompt_text)
+
+                    # 把结果和坐标一起存起来，方便展示
+                    results.append(f"**切片 {tile_index} [X:{i}, Y:{j}]:** {result_text}")
+                    tile_index += 1
+
+            # 7. 展示结果
+            st.success(f"✅ 识别完成！共切分并识别了 {tile_index - 1} 个切片。")
             for res in results:
                 st.info(res)
