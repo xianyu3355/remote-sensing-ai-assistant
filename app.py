@@ -6,47 +6,22 @@ import io
 from PIL import Image
 
 # ==========================================
-# 1. 配置 API Key（本地测试时改成真实Key，测试完改回占位符）
+# 0. 配置
 # ==========================================
 API_KEY = "sk-你的key"
 URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 MODEL_NAME = "qwen3.8-flash"
 
 
-# ==========================================
-# 2. 定义切片函数
-# ==========================================
-def split_image(img, tile_size=512):
-    tiles = []
-    for i in range(0, img.width, tile_size):
-        for j in range(0, img.height, tile_size):
-            box = (i, j, min(i + tile_size, img.width), min(j + tile_size, img.height))
-            tiles.append(img.crop(box))
-    return tiles
-
-
-# ==========================================
-# 3. 封装调用大模型的函数
-# ==========================================
 def call_qwen_vl(image_bytes, prompt_text):
     img_base64 = base64.b64encode(image_bytes).decode("utf-8")
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
     data = {
         "model": MODEL_NAME,
-        "input": {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"image": f"data:image/jpeg;base64,{img_base64}"},
-                        {"text": prompt_text}
-                    ]
-                }
-            ]
-        },
+        "input": {"messages": [{"role": "user", "content": [
+            {"image": f"data:image/jpeg;base64,{img_base64}"},
+            {"text": prompt_text}
+        ]}]},
         "parameters": {}
     }
     try:
@@ -55,73 +30,110 @@ def call_qwen_vl(image_bytes, prompt_text):
         if response.status_code == 200 and "output" in result:
             return result["output"]["choices"][0]["message"]["content"][0]["text"]
         else:
-            return f"API返回错误：{json.dumps(result, ensure_ascii=False)}"
+            return f"API错误：{json.dumps(result, ensure_ascii=False)}"
     except Exception as e:
-        return f"网络请求失败：{e}"
+        return f"网络失败：{e}"
 
 
 # ==========================================
-# 4. Streamlit 网页界面（核心改造区）
+# 1. 界面与模式选择
 # ==========================================
-st.title("🛰️ 遥感影像看图说话助手")
-st.write("上传一张遥感影像，AI将自动切图并识别其中的地物。")
+st.title("🛰️ 遥感影像时空智能分析系统")
 
-uploaded_file = st.file_uploader("请上传遥感图片", type=["jpg", "png", "jpeg"])
+analysis_mode = st.radio(
+    "请选择分析模式",
+    ["模式一：单时单像解析 (空间特征)", "模式二：多时相变化检测 (时间特征)"]
+)
+st.divider()
 
-# 新增：让用户输入时空信息
-st.subheader("时空信息（可选）")
-col1, col2 = st.columns(2)
-with col1:
-    location = st.text_input("拍摄地点", "北京")
-with col2:
-    capture_time = st.text_input("拍摄时间", "2026年7月")
+# ------------------ 模式一：单时单像（切片） ------------------
+if analysis_mode == "模式一：单时单像解析 (空间特征)":
+    st.subheader("单幅影像切片解析")
+    col1, col2 = st.columns(2)
+    with col1:
+        location = st.text_input("拍摄地点", "北京", key="loc1")
+    with col2:
+        capture_time = st.text_input("拍摄时间", "2026年10月", key="time1")
 
-if uploaded_file is not None:
-    st.image(uploaded_file, caption="上传的遥感图", use_container_width=True)
+    file_single = st.file_uploader("上传影像", type=["jpg", "png"], key="single")
 
-    if st.button("开始识别"):
-        with st.spinner("正在切片并识别中..."):
-            # 1. 读取原图
-            img_bytes = uploaded_file.getvalue()
-            img = Image.open(io.BytesIO(img_bytes))
+    if file_single is not None:
+        st.image(file_single, caption="上传的影像", use_container_width=True)
+        if st.button("开始切片识别", key="btn_single"):
+            with st.spinner("正在切片并识别中..."):
+                img = Image.open(file_single).convert("RGB")
+                results = []
+                tile_index = 1
+                tile_size = 512
 
-            tile_size = 512
-            results = []
-            tile_index = 1  # 记录切片编号
+                # 循环切片（上限设为 1024，最多切4块，防止卡死）
+                for i in range(0, min(img.width, 1024), tile_size):
+                    for j in range(0, min(img.height, 1024), tile_size):
+                        tile = img.crop((i, j, min(i + tile_size, img.width), min(j + tile_size, img.height)))
+                        bytes_io = io.BytesIO();
+                        tile.save(bytes_io, format='JPEG')
 
-            # 2. 核心：在切图时，记录切片的“空间坐标”
-            for i in range(0, img.width, tile_size):
-                for j in range(0, img.height, tile_size):
-                    # 确定切片的边界框 (左, 上, 右, 下)
-                    box = (i, j, min(i + tile_size, img.width), min(j + tile_size, img.height))
-                    tile = img.crop(box)
+                        prompt = f"""你是一位资深遥感解译专家。这是{location}在{capture_time}的第{tile_index}个切片，坐标为[X:{i}, Y:{j}]。
+                        请严格按照以下格式输出：
+                        1. 【主要地物】：（列出识别到的地物，如建筑、水体、农田）
+                        2. 【空间分布】：（描述这些地物在切片中的位置关系）
+                        3. 【时空推断】：（结合{capture_time}的季节和{location}的地理特点，推测地物当前的状态，如农作物长势、水体丰枯）"""
+                        res = call_qwen_vl(bytes_io.getvalue(), prompt)
+                        results.append(f"**切片 {tile_index} [X:{i},Y:{j}]:** {res}")
+                        tile_index += 1
 
-                    # 3. 把切片转成字节流
-                    tile_bytes = io.BytesIO()
-                    tile.save(tile_bytes, format='JPEG')
+                st.success(f"✅ 识别完成！共识别 {tile_index - 1} 个切片。")
+                for r in results: st.info(r)
 
-                    # 4. 构造带有“时空特征”的元数据
-                    # 空间位置：X: i, Y: j；时间：capture_time
-                    spatial_info = f"空间坐标起点(X:{i}, Y:{j})"
-                    time_info = f"拍摄时间({capture_time})"
-                    loc_info = f"拍摄地点({location})"
+# ------------------ 模式二：多时相变化检测 ------------------
+else:
+    st.subheader("同一地点、不同时间的影像变化检测")
+    location = st.text_input("拍摄地点", "北京", key="loc2")
 
-                    # 5. 组装提示词，让大模型结合时空信息
-                    prompt_text = (
-                        f"你是一位资深遥感解译专家。"
-                        f"当前分析的是遥感影像的切片 {tile_index}，"
-                        f"该切片{spatial_info}，{loc_info}，{time_info}。"
-                        f"请结合该季节和空间位置特征，识别此切片中的主要地物，用一句话简洁描述。"
-                    )
+    colA, colB = st.columns(2)
+    with colA:
+        time_A = st.text_input("时间A (前期)", "2026年7月", key="timeA")
+        file_A = st.file_uploader("上传时间A影像", type=["jpg", "png"], key="fileA")
+    with colB:
+        time_B = st.text_input("时间B (后期)", "2026年12月", key="timeB")
+        file_B = st.file_uploader("上传时间B影像", type=["jpg", "png"], key="fileB")
 
-                    # 6. 调用大模型
-                    result_text = call_qwen_vl(tile_bytes.getvalue(), prompt_text)
+    if file_A is not None and file_B is not None:
+        st.image([file_A, file_B], caption=["前期影像", "后期影像"], width=300)
+        if st.button("开始变化检测", key="btn_time"):
+            with st.spinner("正在拼接切片并检测变化..."):
+                img_A = Image.open(file_A).convert("RGB")
+                img_B = Image.open(file_B).convert("RGB")
+                results = []
+                tile_index = 1
+                tile_size = 512
 
-                    # 把结果和坐标一起存起来，方便展示
-                    results.append(f"**切片 {tile_index} [X:{i}, Y:{j}]:** {result_text}")
-                    tile_index += 1
+                # 限制只切前4块进行对比
+                for i in range(0, min(img_A.width, 1024), tile_size):
+                    for j in range(0, min(img_A.height, 1024), tile_size):
+                        tile_A = img_A.crop((i, j, min(i + tile_size, img_A.width), min(j + tile_size, img_A.height)))
+                        tile_B = img_B.crop((i, j, min(i + tile_size, img_B.width), min(j + tile_size, img_B.height)))
 
-            # 7. 展示结果
-            st.success(f"✅ 识别完成！共切分并识别了 {tile_index - 1} 个切片。")
-            for res in results:
-                st.info(res)
+                        # 左右拼接当前切片
+                        combined_img = Image.new('RGB', (tile_size * 2, tile_size))
+                        combined_img.paste(tile_A, (0, 0))
+                        combined_img.paste(tile_B, (tile_size, 0))
+                        bytes_io = io.BytesIO();
+                        combined_img.save(bytes_io, format='JPEG')
+
+                        prompt = f"""你是一位专业的遥感变化检测专家。
+                        这是一张左右拼接的对比图。左侧影像拍摄于【{time_A}】，右侧影像拍摄于【{time_B}】，地点在【{location}】。
+
+                        请仔细观察左右两张图的差异，严格按照以下格式输出你的发现：
+                        1. 【水体变化】：对比左右两侧，水体（河流、湖泊）的面积、边界或颜色是否发生变化？
+                        2. 【植被/农田变化】：对比左右两侧，植被的颜色（如由绿变黄）或农田的纹理是否发生变化？结合季节因素推断原因。
+                        3. 【建筑/人造地物】：是否有新增的道路、建筑或施工区域？
+                        4. 【综合结论】：用一句话总结该区域在这段时间内的主要变化。
+
+                        注意：如果某项没有变化，请直接回答“无明显变化”。不要写废话，直接给出专业分析。"""
+                        res = call_qwen_vl(bytes_io.getvalue(), prompt)
+                        results.append(f"**切片 {tile_index} [X:{i},Y:{j}] 变化:** {res}")
+                        tile_index += 1
+
+                st.success(f"✅ 检测完成！共对比了 {tile_index - 1} 个切片。")
+                for r in results: st.info(r)
