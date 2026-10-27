@@ -11,7 +11,13 @@ from PIL import Image
 # 设置网页标题和宽屏模式
 st.set_page_config(page_title="遥感时空智能分析系统", layout="wide")
 
-API_KEY = "sk-你的key"  # ⚠️ 测试时换成真实 Key
+import streamlit as st
+
+# 优先读取云端的 Secrets，本地跑不通时回退到占位符
+try:
+    API_KEY = st.secrets["DASHSCOPE_API_KEY"]
+except Exception:
+    API_KEY = "sk-你的key"
 URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 MODEL_NAME = "qwen3.8-flash"  # 如果你有权限，换成 qwen-vl-max 效果更好
 
