@@ -1,3 +1,5 @@
+import cv2
+import numpy as np
 import streamlit as st
 import requests
 import base64
@@ -72,6 +74,10 @@ if analysis_mode == "模式一：单时单像解析 (空间)":
         capture_time = st.text_input("拍摄时间", "2026年10月", key="time1")
 
     file_single = st.file_uploader("上传影像", type=["jpg", "png"], key="single")
+    # 新增：算法对比开关
+    use_enhance = st.checkbox("🚀 开启图像增强算法 (对比测试)", value=False)
+    if use_enhance:
+        st.info("已开启：系统将使用 OpenCV 进行锐化增强后再切片识别。")
 
     if file_single is not None:
         # 分左右两列：左边放图，右边放结果
@@ -83,12 +89,22 @@ if analysis_mode == "模式一：单时单像解析 (空间)":
 
         with col_res:
             if btn:
-                with st.spinner("正在切片并识别中，请稍候..."):
+                with st.spinner("正在切片并识别中..."):
+                    # 1. 读取原图
                     img = Image.open(file_single).convert("RGB")
+
+                    # 2. OpenCV 算法对比增强 (如果勾选了复选框)
+                    if use_enhance:
+                        img_np = np.array(img)
+                        img_cv = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+                        img_cv = cv2.detailEnhance(img_cv, sigma_s=10, sigma_r=0.15)
+                        img = Image.fromarray(cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB))
+
+                    # 3. 开始切片
                     tile_index = 1
                     tile_size = 512
 
-                    # 限制只切前4块（防止太慢）
+                    # 4. 循环切片 (这里不需要改，保留你原来的即可)
                     for i in range(0, min(img.width, 1024), tile_size):
                         for j in range(0, min(img.height, 1024), tile_size):
                             tile = img.crop((i, j, min(i + tile_size, img.width), min(j + tile_size, img.height)))
