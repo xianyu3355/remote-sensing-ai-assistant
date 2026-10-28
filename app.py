@@ -3,15 +3,12 @@ import requests
 import base64
 import json
 import io
-from PIL import Image
 from PIL import Image, ImageEnhance
 # ==========================================
 # 0. 全局配置
 # ==========================================
 # 设置网页标题和宽屏模式
 st.set_page_config(page_title="遥感时空智能分析系统", layout="wide")
-
-import streamlit as st
 
 # 优先读取云端的 Secrets，本地跑不通时回退到占位符
 try:
