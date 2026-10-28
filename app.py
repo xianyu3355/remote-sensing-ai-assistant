@@ -71,13 +71,6 @@ if analysis_mode == "模式一：单时单像解析 (空间)":
     file_single = st.file_uploader("上传影像", type=["jpg", "png"], key="single")
     # 新增：算法对比开关
     use_enhance = st.checkbox("🚀 开启图像增强算法 (对比测试)", value=False)
-    if use_enhance:
-        # 使用 Pillow 自带的对比度增强算法
-        from PIL import ImageEnhance
-
-        enhancer = ImageEnhance.Contrast(img)
-        img = enhancer.enhance(1.5)  # 对比度增强 1.5 倍
-
     if file_single is not None:
         # 分左右两列：左边放图，右边放结果
         col_img, col_res = st.columns([1, 1.5])
@@ -89,15 +82,13 @@ if analysis_mode == "模式一：单时单像解析 (空间)":
         with col_res:
             if btn:
                 with st.spinner("正在切片并识别中..."):
-                    # 1. 读取原图
+                    # 1. 先读取图片
                     img = Image.open(file_single).convert("RGB")
 
-                    # 2. OpenCV 算法对比增强 (如果勾选了复选框)
+                    # 2. 再判断是否开启了增强算法
                     if use_enhance:
-                        img_np = np.array(img)
-                        img_cv = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
-                        img_cv = cv2.detailEnhance(img_cv, sigma_s=10, sigma_r=0.15)
-                        img = Image.fromarray(cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB))
+                        enhancer = ImageEnhance.Contrast(img)
+                        img = enhancer.enhance(1.5)  # 对比度增强 1.5 倍
 
                     # 3. 开始切片
                     tile_index = 1
