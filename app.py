@@ -1,5 +1,3 @@
-import cv2
-import numpy as np
 import streamlit as st
 import requests
 import base64
@@ -77,7 +75,11 @@ if analysis_mode == "模式一：单时单像解析 (空间)":
     # 新增：算法对比开关
     use_enhance = st.checkbox("🚀 开启图像增强算法 (对比测试)", value=False)
     if use_enhance:
-        st.info("已开启：系统将使用 OpenCV 进行锐化增强后再切片识别。")
+        # 使用 Pillow 自带的对比度增强算法
+        from PIL import ImageEnhance
+
+        enhancer = ImageEnhance.Contrast(img)
+        img = enhancer.enhance(1.5)  # 对比度增强 1.5 倍
 
     if file_single is not None:
         # 分左右两列：左边放图，右边放结果
