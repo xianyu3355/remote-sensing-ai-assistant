@@ -4,7 +4,7 @@ import base64
 import json
 import io
 from PIL import Image
-
+from PIL import Image, ImageEnhance
 # ==========================================
 # 0. 全局配置
 # ==========================================
