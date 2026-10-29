@@ -16,7 +16,7 @@ try:
 except Exception:
     API_KEY = "sk-你的key"
 URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
-MODEL_NAME = "qwen3.8-flash"  # 如果你有权限，换成 qwen-vl-max 效果更好
+MODEL_NAME = "qwen3.8-flash"
 
 
 def call_qwen_vl(image_bytes, prompt_text):
@@ -94,7 +94,7 @@ if analysis_mode == "模式一：单时单像解析 (空间)":
                     tile_index = 1
                     tile_size = 512
 
-                    # 4. 循环切片 (这里不需要改，保留你原来的即可)
+                    # 4. 循环切片
                     for i in range(0, min(img.width, 1024), tile_size):
                         for j in range(0, min(img.height, 1024), tile_size):
                             tile = img.crop((i, j, min(i + tile_size, img.width), min(j + tile_size, img.height)))
